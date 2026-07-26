@@ -336,69 +336,77 @@ with col_exp2:
     st.info("💡 Tip: Guarda este CSV en una carpeta local fija. Si conectas Power BI a esa carpeta o archivo, el reporte se actualizará automáticamente cada vez que exportes nuevos escenarios.")
 
 # ---------------------------------------------------------
-# 6. DIAGNÓSTICO CON IA EN LA NUBE (GROQ API)
+# 6. CHATBOT ASISTENTE METALÚRGICO CON IA
 # ---------------------------------------------------------
 st.divider()
-st.subheader("🤖 Diagnóstico e Interpretación Técnica con IA")
+st.subheader("💬 Asistente Virtual Metalúrgico (Chatbot IA)")
+st.caption("Pregúntale cualquier duda operacional sobre el balance o solicita recomendaciones técnicas en tiempo real.")
 
-# Casilla de texto para ingresar la API Key de Groq (se guarda en la sesión)
-api_key_groq = st.text_input(
-    "🔑 Ingresa tu API Key gratuita de Groq:", 
-    type="password", 
-    help="Obtén tu clave en https://console.groq.com/keys"
-)
+# Inicializar historial de chat en la sesión
+if "messages" not in st.session_state:
+    st.session_state["messages"] = []
 
-if st.button("🧠 Generar Diagnóstico con IA (Groq Cloud)"):
-    if not api_key_groq:
-        st.warning("⚠️ Por favor ingresa tu API Key de Groq arriba para generar el informe.")
-    else:
-        with st.spinner("Procesando diagnóstico ultra-rápido en la nube de Groq..."):
-            try:
-                # Conexión directa a Groq Cloud
-                client = OpenAI(
-                    base_url="https://api.groq.com/openai/v1", 
-                    api_key=api_key_groq
-                )
-                
-                prompt = f"""
-                Actúa como un Ingeniero Metalúrgico Senior experto en plantas concentradoras.
-                Analiza el circuito: {circuito_seleccionado} con ensamble mineralógico: {str_ensamble}.
-                
-                PARÁMETROS GLOBALES DEL CIRCUITO:
-                - Alimentación Fresca (A): {tonelaje_A} TMSPH con ley de {ley_cu_A}% Cu.
-                - Concentrado Final (CF): {masa_cf_tot:.2f} TMSPH con ley de {ley_cf:.2f}% Cu.
-                - Recuperación Global (RG): {rec_global:.2f}%
-                - Razón de Concentración Global (RC): {rc_global:.2f}
-                - Razón de Enriquecimiento Global (RE): {re_global:.2f}
-                - Razón en Peso Global (RP): {rp_global:.2f}%
-                
-                PARÁMETROS DE CONCENTRACIÓN POR ETAPA:
-                {df_kpis_etapas.to_string(index=False)}
-                
-                DETALLE DE FLUIDOS POR CELDA:
-                {df_detalle.to_string(index=False)}
-                
-                Por favor emite un informe técnico enfocado en:
-                1. Evaluación del RC y RE global y por etapa.
-                2. Impacto de la mezcla de especies mineralógicas en la selectividad del proceso.
-                3. Diagnóstico de cuellos de botella según la distribución de ganga y mineral útil.
-                4. Recomendaciones operacionales concretas para optimizar el circuito.
-                """
-                
-                response = client.chat.completions.create(
-                    model="llama-3.1-8b-instant",
-                    messages=[
-                        {"role": "system", "content": "Eres un asistente experto en ingeniería de minerales y balances de masa en flotación."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    temperature=0.3
-                )
-                
-                st.success("¡Diagnóstico completado en la nube con Groq (Llama 3.1)!")
-                st.markdown(response.choices[0].message.content)
-                
-            except Exception as e:
-                st.error(f"Error al conectar con la API de Groq: {e}")
+# Contexto técnico que conoce el modelo sobre el escenario actual
+contexto_tecnico = f"""
+Eres un Ingeniero Metalúrgico Senior experto en plantas concentradoras.
+Estás analizando el circuito actual configurado por el usuario:
+- Circuito: {circuito_seleccionado}
+- Ensamble Mineralógico: {str_ensamble} (%Cu Teórico Promedio: {pct_cu_promedio:.2f}%)
+- Alimentación Fresca (A): {tonelaje_A} TMSPH con ley de {ley_cu_A}% Cu.
+- Concentrado Final (CF): {masa_cf_tot:.2f} TMSPH con ley de {ley_cf:.2f}% Cu.
+- Recuperación Global (RG): {rec_global:.2f}%
+- Razón de Concentración Global (RC): {rc_global:.2f}
+- Razón de Enriquecimiento Global (RE): {re_global:.2f}
+- Razón en Peso Global (RP): {rp_global:.2f}%
+
+Resumen por Etapas:
+{df_kpis_etapas.to_string(index=False)}
+"""
+
+# Mostrar historial de mensajes guardados
+for msg in st.session_state["messages"]:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
+
+# Obtener clave API oculta desde st.secrets o entorno
+api_key = st.secrets.get("GROQ_API_KEY", os.environ.get("GROQ_API_KEY", ""))
+
+if not api_key:
+    st.info("💡 Para activar el Chatbot, guarda la clave `GROQ_API_KEY` en los Secrets de Streamlit Cloud.")
+else:
+    # Entrada de texto para la pregunta del usuario
+    if prompt_usuario := st.chat_input("Escribe tu consulta sobre este circuito de flotación..."):
+        # Guardar y mostrar mensaje del usuario
+        st.session_state["messages"].append({"role": "user", "content": prompt_usuario})
+        with st.chat_message("user"):
+            st.markdown(prompt_usuario)
+
+        # Generar respuesta de la IA
+        with st.chat_message("assistant"):
+            with st.spinner("Analizando balance metalúrgico..."):
+                try:
+                    client = OpenAI(
+                        base_url="https://api.groq.com/openai/v1",
+                        api_key=api_key
+                    )
+                    
+                    # Construir la conversación con el contexto
+                    mensajes_api = [{"role": "system", "content": contexto_tecnico}]
+                    for m in st.session_state["messages"]:
+                        mensajes_api.append({"role": m["role"], "content": m["content"]})
+                    
+                    response = client.chat.completions.create(
+                        model="llama-3.1-8b-instant",
+                        messages=mensajes_api,
+                        temperature=0.3
+                    )
+                    
+                    respuesta_ia = response.choices[0].message.content
+                    st.markdown(respuesta_ia)
+                    st.session_state["messages"].append({"role": "assistant", "content": respuesta_ia})
+                    
+                except Exception as e:
+                    st.error(f"Error al comunicar con la IA: {e}")
 
 # ---------------------------------------------------------
 # 7. PIE DE PÁGINA / CRÉDITOS
@@ -409,7 +417,7 @@ st.markdown(
     """
     <div style="text-align: center; padding: 10px; color: #888888;">
         <h4 style="margin-bottom: 2px;">Creado por grupo DiRoPS</h4>
-             <p style="font-size: 14px; margin-top: 0px;">Always</p>
+        <p style="font-size: 14px; margin-top: 0px;">Always</p>
     </div>
     """,
     unsafe_allow_html=True
