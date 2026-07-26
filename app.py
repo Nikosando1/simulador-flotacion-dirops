@@ -397,6 +397,7 @@ st.markdown(
     """
     <div style="text-align: center; padding: 10px; color: #888888;">
         <h4 style="margin-bottom: 2px;">Creado por grupo DiRoPS</h4>
+        <p style="font-size: 14px; margin-top: 0px;">Always</p>
     </div>
     """,
     unsafe_allow_html=True
