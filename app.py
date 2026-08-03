@@ -71,35 +71,96 @@ circuito_seleccionado = st.sidebar.selectbox(
 info_circuito = opciones_circuito[circuito_seleccionado]
 
 # ---------------------------------------------------------
-# 2. ENTRADA DE DATOS Y ENSAMBLE MINERALÓGICO FLEXIBLE
+# 2. ENTRADA DE DATOS Y MODO DE CÁLCULO
 # ---------------------------------------------------------
 st.sidebar.header("📊 Datos de Alimentación Fresca (A)")
 tonelaje_A = st.sidebar.number_input("Tonelaje Fresco Total A (TMSPH)", min_value=1.0, value=1000.0, step=10.0, format="%.2f")
-ley_cu_A = st.sidebar.number_input("Ley de Cobre Cabeza (%Cu)", min_value=0.01, value=1.50, step=0.05, format="%.2f")
 
-with st.sidebar.expander("➕ Configurar Especies Mineralógicas (Multi-Selección)", expanded=True):
-    st.caption("Selecciona una o más especies mineralógicas. Si no seleccionas ninguna, el balance se calculará puramente elemental (%Cu + Ganga).")
-    especies_seleccionadas = st.multiselect(
-        "Minerales de Cobre Presentes:",
-        options=list(ESPECIES_BASE.keys()),
-        default=["Calcopirita (CuFeS2)"]
-    )
+# SELECTOR DE MODO DE ENTRADA
+modo_entrada = st.sidebar.radio(
+    "Modo de Ingreso de Datos de Cabeza:",
+    ["Ley Elemental (%Cu Cabeza)", "Ley de Especie Mineral Directa (% Mineral)"],
+    help="Elige si deseas ingresar la ley de cobre total o los porcentajes reales de cada mineral en la roca."
+)
+
+especies_seleccionadas = []
+distribucion_minera = {}
+ley_cu_A = 0.0
+pct_cu_promedio = 100.0
+
+if modo_entrada == "Ley Elemental (%Cu Cabeza)":
+    ley_cu_A = st.sidebar.number_input("Ley de Cobre Cabeza (%Cu)", min_value=0.01, value=1.50, step=0.05, format="%.2f")
     
-    distribucion_minera = {}
-    if len(especies_seleccionadas) == 1:
-        distribucion_minera[especies_seleccionadas[0]] = 100.0
-        st.info(f"100% del Cobre asignado a {especies_seleccionadas[0]}")
-    elif len(especies_seleccionadas) > 1:
-        st.caption("Distribución del Cobre entre los minerales seleccionados (% sobre el Cobre total):")
-        pct_acumulado = 0.0
-        for idx, esp in enumerate(especies_seleccionadas):
-            val_def = round(100.0 / len(especies_seleccionadas), 1)
-            p = st.number_input(f"% del Cu aportado por {esp}:", min_value=0.0, max_value=100.0, value=val_def, step=1.0, key=f"dist_{idx}")
-            distribucion_minera[esp] = p
-            pct_acumulado += p
+    with st.sidebar.expander("➕ Configurar Especies Mineralógicas", expanded=True):
+        st.caption("Selecciona los minerales presentes en la alimentación:")
+        especies_seleccionadas = st.multiselect(
+            "Minerales de Cobre Presentes:",
+            options=list(ESPECIES_BASE.keys()),
+            default=["Calcopirita (CuFeS2)"]
+        )
         
-        if abs(pct_acumulado - 100.0) > 0.01:
-            st.warning(f"⚠️ La suma de las distribuciones es {pct_acumulado:.1f}%. Debe sumar exactamente 100.0%.")
+        if len(especies_seleccionadas) == 1:
+            distribucion_minera[especies_seleccionadas[0]] = 100.0
+            st.info(f"100% del Cobre asignado a {especies_seleccionadas[0]}")
+        elif len(especies_seleccionadas) > 1:
+            st.caption("Distribución del Cobre entre minerales (% sobre Cobre total):")
+            pct_acumulado = 0.0
+            for idx, esp in enumerate(especies_seleccionadas):
+                val_def = round(100.0 / len(especies_seleccionadas), 1)
+                p = st.number_input(f"% Cu de {esp}:", min_value=0.0, max_value=100.0, value=val_def, step=1.0, key=f"dist_{idx}")
+                distribucion_minera[esp] = p
+                pct_acumulado += p
+            
+            if abs(pct_acumulado - 100.0) > 0.01:
+                st.warning(f"⚠️ La suma debe ser 100.0% (actual: {pct_acumulado:.1f}%).")
+                
+    if especies_seleccionadas and sum(distribucion_minera.values()) > 0:
+        pct_cu_promedio = sum([ESPECIES_BASE[esp] * (distribucion_minera[esp] / 100.0) for esp in especies_seleccionadas])
+        str_ensamble = ", ".join([f"{esp} ({distribucion_minera[esp]}%)" for esp in especies_seleccionadas])
+    else:
+        pct_cu_promedio = 100.0
+        str_ensamble = "Cobre Elemental Pureza Metal"
+
+else:
+    # MODO DIRECTO POR % DE MINERAL EN ROCA
+    with st.sidebar.expander("➕ Ingresar % de Minerales en la Roca", expanded=True):
+        st.caption("Ingresa el porcentaje en peso que representa cada mineral respecto al total de la alimentación:")
+        especies_seleccionadas = st.multiselect(
+            "Minerales Presentes en la Muestra:",
+            options=list(ESPECIES_BASE.keys()),
+            default=["Calcopirita (CuFeS2)"]
+        )
+        
+        pct_minerales_totales = {}
+        ley_cu_calculada = 0.0
+        pct_mineral_sum = 0.0
+        
+        for idx, esp in enumerate(especies_seleccionadas):
+            val_pct = st.number_input(
+                f"% en Roca de {esp}:", 
+                min_value=0.00, 
+                max_value=100.00, 
+                value=4.00 if "Calcopirita" in esp else 1.00, 
+                step=0.10, 
+                format="%.2f",
+                key=f"direct_{idx}"
+            )
+            pct_minerales_totales[esp] = val_pct
+            pct_mineral_sum += val_pct
+            # Aporte de Cu = % Mineral * (% Cu teórico del mineral / 100)
+            ley_cu_calculada += val_pct * (ESPECIES_BASE[esp] / 100.0)
+        
+        ley_cu_A = ley_cu_calculada
+        
+        if ley_cu_A > 0 and pct_mineral_sum > 0:
+            # Ponderado teórico
+            pct_cu_promedio = (ley_cu_A / pct_mineral_sum) * 100.0
+            str_ensamble = ", ".join([f"{esp} ({pct_minerales_totales[esp]}% en roca)" for esp in especies_seleccionadas])
+        else:
+            pct_cu_promedio = 100.0
+            str_ensamble = "Sin Minerales Definidos"
+
+        st.metric("Ley de Cobre Calculada Equiv.", f"{ley_cu_A:.3f} %Cu")
 
 st.sidebar.header("🔄 Recuperaciones por Etapa (%)")
 etapas_activas = info_circuito["etapas"]
@@ -134,16 +195,7 @@ with col_diag:
 
 # CÁLCULOS BASE EN ALIMENTACIÓN FRESCA (A)
 masa_cu_A = tonelaje_A * (ley_cu_A / 100.0)
-
-if especies_seleccionadas and sum(distribucion_minera.values()) > 0:
-    pct_cu_promedio = sum([ESPECIES_BASE[esp] * (distribucion_minera[esp] / 100.0) for esp in especies_seleccionadas])
-    masa_min_A = masa_cu_A / (pct_cu_promedio / 100.0)
-    str_ensamble = ", ".join([f"{esp} ({distribucion_minera[esp]}%)" for esp in especies_seleccionadas])
-else:
-    pct_cu_promedio = 100.0
-    masa_min_A = masa_cu_A
-    str_ensamble = "Cobre Elemental Pureza Metal"
-
+masa_min_A = masa_cu_A / (pct_cu_promedio / 100.0) if pct_cu_promedio > 0 else masa_cu_A
 masa_ganga_A = max(0.0, tonelaje_A - masa_min_A)
 
 r_R_m, r_R_g = rec_R_min/100, rec_R_ganga/100
@@ -342,17 +394,16 @@ st.divider()
 st.subheader("💬 Asistente Virtual Metalúrgico (Chatbot IA)")
 st.caption("Pregúntale cualquier duda operacional sobre el balance o solicita recomendaciones técnicas en tiempo real.")
 
-# Inicializar historial de chat en la sesión
 if "messages" not in st.session_state:
     st.session_state["messages"] = []
 
-# Contexto técnico que conoce el modelo sobre el escenario actual
 contexto_tecnico = f"""
 Eres un Ingeniero Metalúrgico Senior experto en plantas concentradoras.
 Estás analizando el circuito actual configurado por el usuario:
+- Modo de Entrada: {modo_entrada}
 - Circuito: {circuito_seleccionado}
 - Ensamble Mineralógico: {str_ensamble} (%Cu Teórico Promedio: {pct_cu_promedio:.2f}%)
-- Alimentación Fresca (A): {tonelaje_A} TMSPH con ley de {ley_cu_A}% Cu.
+- Alimentación Fresca (A): {tonelaje_A} TMSPH con ley de {ley_cu_A:.3f}% Cu.
 - Concentrado Final (CF): {masa_cf_tot:.2f} TMSPH con ley de {ley_cf:.2f}% Cu.
 - Recuperación Global (RG): {rec_global:.2f}%
 - Razón de Concentración Global (RC): {rc_global:.2f}
@@ -363,25 +414,20 @@ Resumen por Etapas:
 {df_kpis_etapas.to_string(index=False)}
 """
 
-# Mostrar historial de mensajes guardados
 for msg in st.session_state["messages"]:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# Obtener clave API oculta desde st.secrets o entorno
 api_key = st.secrets.get("GROQ_API_KEY", os.environ.get("GROQ_API_KEY", ""))
 
 if not api_key:
     st.info("💡 Para activar el Chatbot, guarda la clave `GROQ_API_KEY` en los Secrets de Streamlit Cloud.")
 else:
-    # Entrada de texto para la pregunta del usuario
     if prompt_usuario := st.chat_input("Escribe tu consulta sobre este circuito de flotación..."):
-        # Guardar y mostrar mensaje del usuario
         st.session_state["messages"].append({"role": "user", "content": prompt_usuario})
         with st.chat_message("user"):
             st.markdown(prompt_usuario)
 
-        # Generar respuesta de la IA
         with st.chat_message("assistant"):
             with st.spinner("Analizando balance metalúrgico..."):
                 try:
@@ -390,7 +436,6 @@ else:
                         api_key=api_key
                     )
                     
-                    # Construir la conversación con el contexto
                     mensajes_api = [{"role": "system", "content": contexto_tecnico}]
                     for m in st.session_state["messages"]:
                         mensajes_api.append({"role": m["role"], "content": m["content"]})
