@@ -454,35 +454,27 @@ else:
                     for m in st.session_state["messages"]:
                         historial_prompt += f"{m['role'].capitalize()}: {m['content']}\n"
                     
-                    # Lista de modelos compatibles para fallback automático
-                    modelos_a_probar = [
-                        'gemini-1.5-flash-latest', 
-                        'gemini-1.5-pro', 
-                        'gemini-1.5-flash',
-                        'gemini-pro'
-                    ]
+                    # 🔍 DETECCIÓN AUTOMÁTICA DE MODELOS ACTIVOS
+                    modelo_activo_nombre = None
+                    for m in genai.list_models():
+                        if 'generateContent' in m.supported_generation_methods:
+                            # Filtramos los modelos de texto válidos
+                            if 'gemini' in m.name:
+                                modelo_activo_nombre = m.name
+                                break
                     
-                    respuesta_exito = False
-                    ultimo_error = None
-                    
-                    for nombre_modelo in modelos_a_probar:
-                        try:
-                            model = genai.GenerativeModel(nombre_modelo)
-                            response = model.generate_content(historial_prompt)
-                            respuesta_ia = response.text
-                            st.markdown(respuesta_ia)
-                            st.session_state["messages"].append({"role": "assistant", "content": respuesta_ia})
-                            respuesta_exito = True
-                            break
-                        except Exception as err_m:
-                            ultimo_error = err_m
-                            continue
-                    
-                    if not respuesta_exito:
-                        st.error(f"Error al conectar con los modelos de Gemini: {ultimo_error}")
+                    if not modelo_activo_nombre:
+                        st.error("No se encontró ningún modelo de Gemini habilitado para 'generateContent' en esta API Key.")
+                    else:
+                        model = genai.GenerativeModel(modelo_activo_nombre)
+                        response = model.generate_content(historial_prompt)
+                        
+                        respuesta_ia = response.text
+                        st.markdown(respuesta_ia)
+                        st.session_state["messages"].append({"role": "assistant", "content": respuesta_ia})
                     
                 except Exception as e:
-                    st.error(f"Error general de configuración en la API de Gemini: {e}")
+                    st.error(f"Error al comunicar con la API de Gemini: {e}")
 
 # ---------------------------------------------------------
 # 7. PIE DE PÁGINA / CRÉDITOS
