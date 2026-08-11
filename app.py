@@ -71,12 +71,11 @@ circuito_seleccionado = st.sidebar.selectbox(
 info_circuito = opciones_circuito[circuito_seleccionado]
 
 # ---------------------------------------------------------
-# 2. ENTRADA DE DATOS Y MODO DE CÁLCULO
+# 2. ENTRADA DE DATOS Y DESGLOSE MINERALÓGICO DIRECTO
 # ---------------------------------------------------------
 st.sidebar.header("📊 Datos de Alimentación Fresca (A)")
 tonelaje_A = st.sidebar.number_input("Tonelaje Fresco Total A (TMSPH)", min_value=1.0, value=1000.0, step=10.0, format="%.2f")
 
-# SELECTOR DE MODO DE ENTRADA
 modo_entrada = st.sidebar.radio(
     "Modo de Ingreso de Datos de Cabeza:",
     ["Ley Elemental (%Cu Cabeza)", "Ley de Especie Mineral Directa (% Mineral)"],
@@ -84,12 +83,14 @@ modo_entrada = st.sidebar.radio(
 )
 
 especies_seleccionadas = []
-distribucion_minera = {}
+desglose_especies_A = [] # Guarda el desglose puro de cada mineral
 ley_cu_A = 0.0
-pct_cu_promedio = 100.0
+masa_cu_A = 0.0
+masa_min_A_tot = 0.0
 
 if modo_entrada == "Ley Elemental (%Cu Cabeza)":
     ley_cu_A = st.sidebar.number_input("Ley de Cobre Cabeza (%Cu)", min_value=0.01, value=1.50, step=0.05, format="%.2f")
+    masa_cu_A = tonelaje_A * (ley_cu_A / 100.0)
     
     with st.sidebar.expander("➕ Configurar Especies Mineralógicas", expanded=True):
         st.caption("Selecciona los minerales presentes en la alimentación:")
@@ -99,6 +100,7 @@ if modo_entrada == "Ley Elemental (%Cu Cabeza)":
             default=["Calcopirita (CuFeS2)"]
         )
         
+        distribucion_minera = {}
         if len(especies_seleccionadas) == 1:
             distribucion_minera[especies_seleccionadas[0]] = 100.0
             st.info(f"100% del Cobre asignado a {especies_seleccionadas[0]}")
@@ -113,12 +115,26 @@ if modo_entrada == "Ley Elemental (%Cu Cabeza)":
             
             if abs(pct_acumulado - 100.0) > 0.01:
                 st.warning(f"⚠️ La suma debe ser 100.0% (actual: {pct_acumulado:.1f}%).")
-                
-    if especies_seleccionadas and sum(distribucion_minera.values()) > 0:
-        pct_cu_promedio = sum([ESPECIES_BASE[esp] * (distribucion_minera[esp] / 100.0) for esp in especies_seleccionadas])
-        str_ensamble = ", ".join([f"{esp} ({distribucion_minera[esp]}%)" for esp in especies_seleccionadas])
+    
+    # CÁLCULO DE MASA PURA SIN PROMEDIOS APROXIMADOS
+    if especies_seleccionadas:
+        for esp in especies_seleccionadas:
+            pct_aporte_cu = distribucion_minera.get(esp, 0.0) / 100.0
+            cu_fino_esp = masa_cu_A * pct_aporte_cu
+            pct_cu_teorico = ESPECIES_BASE[esp]
+            masa_mineral_esp = cu_fino_esp / (pct_cu_teorico / 100.0)
+            masa_min_A_tot += masa_mineral_esp
+            
+            desglose_especies_A.append({
+                "Especie Mineral": esp,
+                "% Cu Teórico": pct_cu_teorico,
+                "Cobre Fino (t/h)": round(cu_fino_esp, 2),
+                "Masa Mineral Pura (t/h)": round(masa_mineral_esp, 2),
+                "% en Roca Total": round((masa_mineral_esp / tonelaje_A) * 100.0, 3)
+            })
+        str_ensamble = ", ".join([f"{esp} ({distribucion_minera[esp]}% Cu)" for esp in especies_seleccionadas])
     else:
-        pct_cu_promedio = 100.0
+        masa_min_A_tot = masa_cu_A
         str_ensamble = "Cobre Elemental Pureza Metal"
 
 else:
@@ -131,12 +147,8 @@ else:
             default=["Calcopirita (CuFeS2)"]
         )
         
-        pct_minerales_totales = {}
-        ley_cu_calculada = 0.0
-        pct_mineral_sum = 0.0
-        
         for idx, esp in enumerate(especies_seleccionadas):
-            val_pct = st.number_input(
+            val_pct_roca = st.number_input(
                 f"% en Roca de {esp}:", 
                 min_value=0.00, 
                 max_value=100.00, 
@@ -145,22 +157,27 @@ else:
                 format="%.2f",
                 key=f"direct_{idx}"
             )
-            pct_minerales_totales[esp] = val_pct
-            pct_mineral_sum += val_pct
-            # Aporte de Cu = % Mineral * (% Cu teórico del mineral / 100)
-            ley_cu_calculada += val_pct * (ESPECIES_BASE[esp] / 100.0)
-        
-        ley_cu_A = ley_cu_calculada
-        
-        if ley_cu_A > 0 and pct_mineral_sum > 0:
-            # Ponderado teórico
-            pct_cu_promedio = (ley_cu_A / pct_mineral_sum) * 100.0
-            str_ensamble = ", ".join([f"{esp} ({pct_minerales_totales[esp]}% en roca)" for esp in especies_seleccionadas])
-        else:
-            pct_cu_promedio = 100.0
-            str_ensamble = "Sin Minerales Definidos"
-
+            pct_cu_teorico = ESPECIES_BASE[esp]
+            masa_mineral_esp = tonelaje_A * (val_pct_roca / 100.0)
+            cu_fino_esp = masa_mineral_esp * (pct_cu_teorico / 100.0)
+            
+            masa_cu_A += cu_fino_esp
+            masa_min_A_tot += masa_mineral_esp
+            
+            desglose_especies_A.append({
+                "Especie Mineral": esp,
+                "% Cu Teórico": pct_cu_teorico,
+                "Cobre Fino (t/h)": round(cu_fino_esp, 2),
+                "Masa Mineral Pura (t/h)": round(masa_mineral_esp, 2),
+                "% en Roca Total": round(val_pct_roca, 3)
+            })
+            
+        ley_cu_A = (masa_cu_A / tonelaje_A * 100.0) if tonelaje_A > 0 else 0.0
+        str_ensamble = ", ".join([f"{e['Especie Mineral']} ({e['% en Roca Total']}% roca)" for e in desglose_especies_A])
         st.metric("Ley de Cobre Calculada Equiv.", f"{ley_cu_A:.3f} %Cu")
+
+masa_ganga_A = max(0.0, tonelaje_A - masa_min_A_tot)
+pct_cu_promedio = (masa_cu_A / masa_min_A_tot * 100.0) if masa_min_A_tot > 0 else 100.0
 
 st.sidebar.header("🔄 Recuperaciones por Etapa (%)")
 etapas_activas = info_circuito["etapas"]
@@ -181,7 +198,7 @@ rec_Sc_min = st.sidebar.number_input("Recup. Mineral Scavenger (%)", min_value=0
 rec_Sc_ganga = st.sidebar.number_input("Recup. Ganga Scavenger (%)", min_value=0.0, max_value=100.0, value=2.0, step=0.1, format="%.2f") if "Scavenger" in etapas_activas else 0.0
 
 # ---------------------------------------------------------
-# 3. DIAGRAMA Y MOTOR DE CÁLCULO MULTI-ESPECIE
+# 3. DIAGRAMA Y MOTOR DE CÁLCULO
 # ---------------------------------------------------------
 col_diag, col_res = st.columns([1, 1])
 
@@ -192,11 +209,6 @@ with col_diag:
         st.image(path_img, use_container_width=True)
     else:
         st.warning(f"No se encontró la imagen en '{path_img}'.")
-
-# CÁLCULOS BASE EN ALIMENTACIÓN FRESCA (A)
-masa_cu_A = tonelaje_A * (ley_cu_A / 100.0)
-masa_min_A = masa_cu_A / (pct_cu_promedio / 100.0) if pct_cu_promedio > 0 else masa_cu_A
-masa_ganga_A = max(0.0, tonelaje_A - masa_min_A)
 
 r_R_m, r_R_g = rec_R_min/100, rec_R_ganga/100
 r_Cl_m, r_Cl_g = rec_Cl_min/100, rec_Cl_ganga/100
@@ -245,13 +257,13 @@ def registrar_etapa(nombre_etapa, m_min_in, m_g_in, rec_m, rec_g, nombre_salida_
 
 # EJECUCIÓN DE BALANCES DIRECTOS
 if "1. Rougher – Scavenger (Con Recirculación" in circuito_seleccionado:
-    m_min_ER = masa_min_A / (1.0 - (1.0 - r_R_m) * r_Sc_m)
+    m_min_ER = masa_min_A_tot / (1.0 - (1.0 - r_R_m) * r_Sc_m)
     m_g_ER = masa_ganga_A / (1.0 - (1.0 - r_R_g) * r_Sc_g)
     s1_R, s2_R = registrar_etapa("Etapa Rougher", m_min_ER, m_g_ER, r_R_m, r_R_g, "CF - Concentrado Final", "Relave Rougher (RR)")
     s1_Sc, s2_Sc = registrar_etapa("Etapa Scavenger", s2_R[0], s2_R[1], r_Sc_m, r_Sc_g, "Conc. Scavenger (CSc)", "Relave Final (RF)")
 
 elif "2. Rougher – Scavenger (Abierto" in circuito_seleccionado:
-    s1_R, s2_R = registrar_etapa("Etapa Rougher", masa_min_A, masa_ganga_A, r_R_m, r_R_g, "Conc. Rougher (CR)", "Relave Rougher (RR)")
+    s1_R, s2_R = registrar_etapa("Etapa Rougher", masa_min_A_tot, masa_ganga_A, r_R_m, r_R_g, "Conc. Rougher (CR)", "Relave Rougher (RR)")
     s1_Sc, s2_Sc = registrar_etapa("Etapa Scavenger", s2_R[0], s2_R[1], r_Sc_m, r_Sc_g, "Conc. Scavenger (CSc)", "Relave Final (RF)")
     m_min_CF = s1_R[0] + s1_Sc[0]
     m_g_CF = s1_R[1] + s1_Sc[1]
@@ -261,31 +273,31 @@ elif "2. Rougher – Scavenger (Abierto" in circuito_seleccionado:
     detalle_celdas.append({"Unidad": "Mezcla Final", "Flujo": "SALIDA 1 (CF - Concentrado Final)", "Masa Total (t/h)": round(m_tot_CF, 2), "Masa Minerales (t/h)": round(m_min_CF, 2), "Cobre Fino (t/h)": round(m_cu_CF, 2), "Ganga (t/h)": round(m_g_CF, 2), "Ley %Cu": round(ley_CF, 2)})
 
 elif "3. Rougher – Cleaner (Abierto" in circuito_seleccionado:
-    s1_R, s2_R = registrar_etapa("Etapa Rougher", masa_min_A, masa_ganga_A, r_R_m, r_R_g, "Conc. Rougher (CR)", "Relave Rougher (RR)")
+    s1_R, s2_R = registrar_etapa("Etapa Rougher", masa_min_A_tot, masa_ganga_A, r_R_m, r_R_g, "Conc. Rougher (CR)", "Relave Rougher (RR)")
     s1_Cl, s2_Cl = registrar_etapa("Etapa Cleaner", s1_R[0], s1_R[1], r_Cl_m, r_Cl_g, "CF - Concentrado Final", "Relave Cleaner (RCl)")
 
 elif "4. Rougher – Cleaner (Cerrado" in circuito_seleccionado:
-    m_min_ER = masa_min_A / (1.0 - r_R_m * (1.0 - r_Cl_m))
+    m_min_ER = masa_min_A_tot / (1.0 - r_R_m * (1.0 - r_Cl_m))
     m_g_ER = masa_ganga_A / (1.0 - r_R_g * (1.0 - r_Cl_g))
     s1_R, s2_R = registrar_etapa("Etapa Rougher", m_min_ER, m_g_ER, r_R_m, r_R_g, "Conc. Rougher (CR)", "Relave Final (RF)")
     s1_Cl, s2_Cl = registrar_etapa("Etapa Cleaner", s1_R[0], s1_R[1], r_Cl_m, r_Cl_g, "CF - Concentrado Final", "Recirculación Cleaner (RCl)")
 
 elif "5. Rougher – Cleaner – Scavenger" in circuito_seleccionado:
-    m_min_CR = masa_min_A * r_R_m
+    m_min_CR = masa_min_A_tot * r_R_m
     m_g_CR = masa_ganga_A * r_R_g
     denom_m = 1.0 - (1.0 - r_Cl_m) * r_Sc_m
     denom_g = 1.0 - (1.0 - r_Cl_g) * r_Sc_g
-    s1_R, s2_R = registrar_etapa("Etapa Rougher", masa_min_A, masa_ganga_A, r_R_m, r_R_g, "Conc. Rougher (CR)", "Relave Rougher (RR)")
+    s1_R, s2_R = registrar_etapa("Etapa Rougher", masa_min_A_tot, masa_ganga_A, r_R_m, r_R_g, "Conc. Rougher (CR)", "Relave Rougher (RR)")
     s1_Cl, s2_Cl = registrar_etapa("Etapa Cleaner", m_min_CR / denom_m, m_g_CR / denom_g, r_Cl_m, r_Cl_g, "CF - Concentrado Final", "Relave Cleaner (RCl)")
     s1_Sc, s2_Sc = registrar_etapa("Etapa Scavenger", s2_Cl[0], s2_Cl[1], r_Sc_m, r_Sc_g, "Conc. Scavenger (RSc)", "Relave Scavenger (RF)")
 
 else: # Circuitos 6 y 7
-    m_min_CR = masa_min_A * r_R_m
+    m_min_CR = masa_min_A_tot * r_R_m
     m_g_CR = masa_ganga_A * r_R_g
     denom_m = 1.0 - ((1.0 - r_Cl1_m) * r_Sc_m + r_Cl1_m * (1.0 - r_Cl2_m))
     denom_g = 1.0 - ((1.0 - r_Cl1_g) * r_Sc_g + r_Cl1_g * (1.0 - r_Cl2_g))
     
-    s1_R, s2_R = registrar_etapa("Etapa Rougher", masa_min_A, masa_ganga_A, r_R_m, r_R_g, "Conc. Rougher (CR)", "Relave Rougher (RR)")
+    s1_R, s2_R = registrar_etapa("Etapa Rougher", masa_min_A_tot, masa_ganga_A, r_R_m, r_R_g, "Conc. Rougher (CR)", "Relave Rougher (RR)")
     s1_Cl1, s2_Cl1 = registrar_etapa("Etapa Cleaner 1", m_min_CR / denom_m, m_g_CR / denom_g, r_Cl1_m, r_Cl1_g, "Conc. Cleaner 1 (CCl1)", "Relave Cleaner 1 (RCl1)")
     s1_Cl2, s2_Cl2 = registrar_etapa("Etapa Cleaner 2", s1_Cl1[0], s1_Cl1[1], r_Cl2_m, r_Cl2_g, "CF - Concentrado Final", "Recirculación Cleaner 2 (RCl2)")
     s1_Sc, s2_Sc = registrar_etapa("Etapa Scavenger", s2_Cl1[0], s2_Cl1[1], r_Sc_m, r_Sc_g, "Conc. Scavenger (RSc)", "Relave Scavenger (RF)")
@@ -321,7 +333,7 @@ with col_res:
 st.divider()
 
 # ---------------------------------------------------------
-# 4. PESTAÑAS DETALLADAS TIPO EXCEL & EXPORTACIÓN
+# 4. PESTAÑAS DETALLADAS TIPO EXCEL & DESGLOSE DINÁMICO
 # ---------------------------------------------------------
 tab1, tab2, tab3 = st.tabs([
     "📊 Balance Detallado Entrada/Salida por Celda", 
@@ -330,8 +342,26 @@ tab1, tab2, tab3 = st.tabs([
 ])
 
 with tab1:
+    # 📌 TABLA DINÁMICA DE APORTE POR ESPECIE MINERAL
+    st.subheader("💎 Desglose de Aporte por Especie Mineralógica (Alimentación Fresca)")
+    if desglose_especies_A:
+        df_desglose = pd.DataFrame(desglose_especies_A)
+        st.dataframe(df_desglose, use_container_width=True)
+        
+        # Tarjetas dinámicas individuales
+        cols_min = st.columns(min(len(desglose_especies_A), 4))
+        for idx, item in enumerate(desglose_especies_A):
+            col_target = cols_min[idx % len(cols_min)]
+            col_target.metric(
+                label=f"🪨 {item['Especie Mineral']}",
+                value=f"{item['Masa Mineral Pura (t/h)']} t/h",
+                delta=f"{item['Cobre Fino (t/h)']} t/h Cu Fino"
+            )
+    else:
+        st.info("No hay especies mineralógicas seleccionadas.")
+
+    st.divider()
     st.subheader("📋 Balance de Masa por Unidad Operacional (Vista Estilo Excel)")
-    st.caption(f"Ensamble mineralógico activo: **{str_ensamble}** (%Cu Teórico Promedio: **{pct_cu_promedio:.2f}%**)")
     unidades = df_detalle["Unidad"].unique()
     for u in unidades:
         with st.expander(f"🔹 {u} — Detalle de Entradas y Salidas", expanded=True):
@@ -402,13 +432,17 @@ Eres un Ingeniero Metalúrgico Senior experto en plantas concentradoras.
 Estás analizando el circuito actual configurado por el usuario:
 - Modo de Entrada: {modo_entrada}
 - Circuito: {circuito_seleccionado}
-- Ensamble Mineralógico: {str_ensamble} (%Cu Teórico Promedio: {pct_cu_promedio:.2f}%)
+- Ensamble Mineralógico: {str_ensamble}
 - Alimentación Fresca (A): {tonelaje_A} TMSPH con ley de {ley_cu_A:.3f}% Cu.
+- Masa Mineral Pura Total: {masa_min_A_tot:.2f} t/h (Ganga: {masa_ganga_A:.2f} t/h)
 - Concentrado Final (CF): {masa_cf_tot:.2f} TMSPH con ley de {ley_cf:.2f}% Cu.
 - Recuperación Global (RG): {rec_global:.2f}%
 - Razón de Concentración Global (RC): {rc_global:.2f}
 - Razón de Enriquecimiento Global (RE): {re_global:.2f}
 - Razón en Peso Global (RP): {rp_global:.2f}%
+
+Desglose Mineralógico en Alimentación:
+{pd.DataFrame(desglose_especies_A).to_string(index=False) if desglose_especies_A else "N/A"}
 
 Resumen por Etapas:
 {df_kpis_etapas.to_string(index=False)}
