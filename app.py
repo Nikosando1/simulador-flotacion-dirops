@@ -2,7 +2,7 @@ import os
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from google import genai
+import google.generativeai as genai
 
 # ---------------------------------------------------------
 # CONFIGURACIÓN DE LA PÁGINA WEB
@@ -448,17 +448,15 @@ else:
         with st.chat_message("assistant"):
             with st.spinner("Analizando balance metalúrgico con Gemini..."):
                 try:
-                    client = genai.Client(api_key=gemini_key)
+                    # Configuración e inicialización del SDK oficial google-generativeai
+                    genai.configure(api_key=gemini_key)
+                    model = genai.GenerativeModel('gemini-1.5-flash')
                     
                     historial_prompt = f"System Context:\n{contexto_tecnico}\n\nHistorial de Conversación:\n"
                     for m in st.session_state["messages"]:
                         historial_prompt += f"{m['role'].capitalize()}: {m['content']}\n"
                     
-                    # Usamos el alias de producción 'gemini-1.5-flash' o 'gemini-2.5-flash' sin prefijos no disponibles
-                    response = client.models.generate_content(
-                        model='gemini-1.5-flash',
-                        contents=historial_prompt
-                    )
+                    response = model.generate_content(historial_prompt)
                     
                     respuesta_ia = response.text
                     st.markdown(respuesta_ia)
