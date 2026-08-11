@@ -454,8 +454,9 @@ else:
                     for m in st.session_state["messages"]:
                         historial_prompt += f"{m['role'].capitalize()}: {m['content']}\n"
                     
+                    # Usamos el alias de producción 'gemini-1.5-flash' o 'gemini-2.5-flash' sin prefijos no disponibles
                     response = client.models.generate_content(
-                        model='gemini-2.5-flash',
+                        model='gemini-1.5-flash',
                         contents=historial_prompt
                     )
                     
