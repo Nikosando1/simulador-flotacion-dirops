@@ -448,22 +448,41 @@ else:
         with st.chat_message("assistant"):
             with st.spinner("Analizando balance metalúrgico con Gemini..."):
                 try:
-                    # Configuración e inicialización del SDK oficial google-generativeai
                     genai.configure(api_key=gemini_key)
-                    model = genai.GenerativeModel('gemini-1.5-flash')
                     
                     historial_prompt = f"System Context:\n{contexto_tecnico}\n\nHistorial de Conversación:\n"
                     for m in st.session_state["messages"]:
                         historial_prompt += f"{m['role'].capitalize()}: {m['content']}\n"
                     
-                    response = model.generate_content(historial_prompt)
+                    # Lista de modelos compatibles para fallback automático
+                    modelos_a_probar = [
+                        'gemini-1.5-flash-latest', 
+                        'gemini-1.5-pro', 
+                        'gemini-1.5-flash',
+                        'gemini-pro'
+                    ]
                     
-                    respuesta_ia = response.text
-                    st.markdown(respuesta_ia)
-                    st.session_state["messages"].append({"role": "assistant", "content": respuesta_ia})
+                    respuesta_exito = False
+                    ultimo_error = None
+                    
+                    for nombre_modelo in modelos_a_probar:
+                        try:
+                            model = genai.GenerativeModel(nombre_modelo)
+                            response = model.generate_content(historial_prompt)
+                            respuesta_ia = response.text
+                            st.markdown(respuesta_ia)
+                            st.session_state["messages"].append({"role": "assistant", "content": respuesta_ia})
+                            respuesta_exito = True
+                            break
+                        except Exception as err_m:
+                            ultimo_error = err_m
+                            continue
+                    
+                    if not respuesta_exito:
+                        st.error(f"Error al conectar con los modelos de Gemini: {ultimo_error}")
                     
                 except Exception as e:
-                    st.error(f"Error al comunicar con la API de Gemini: {e}")
+                    st.error(f"Error general de configuración en la API de Gemini: {e}")
 
 # ---------------------------------------------------------
 # 7. PIE DE PÁGINA / CRÉDITOS
