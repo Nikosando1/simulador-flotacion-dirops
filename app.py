@@ -83,7 +83,7 @@ modo_entrada = st.sidebar.radio(
 )
 
 especies_seleccionadas = []
-desglose_especies_A = [] # Guarda el desglose puro de cada mineral
+desglose_especies_A = []
 ley_cu_A = 0.0
 masa_cu_A = 0.0
 masa_min_A_tot = 0.0
@@ -116,7 +116,6 @@ if modo_entrada == "Ley Elemental (%Cu Cabeza)":
             if abs(pct_acumulado - 100.0) > 0.01:
                 st.warning(f"⚠️ La suma debe ser 100.0% (actual: {pct_acumulado:.1f}%).")
     
-    # CÁLCULO DE MASA PURA SIN PROMEDIOS APROXIMADOS
     if especies_seleccionadas:
         for esp in especies_seleccionadas:
             pct_aporte_cu = distribucion_minera.get(esp, 0.0) / 100.0
@@ -138,7 +137,6 @@ if modo_entrada == "Ley Elemental (%Cu Cabeza)":
         str_ensamble = "Cobre Elemental Pureza Metal"
 
 else:
-    # MODO DIRECTO POR % DE MINERAL EN ROCA
     with st.sidebar.expander("➕ Ingresar % de Minerales en la Roca", expanded=True):
         st.caption("Ingresa el porcentaje en peso que representa cada mineral respecto al total de la alimentación:")
         especies_seleccionadas = st.multiselect(
@@ -333,12 +331,11 @@ with col_res:
 st.divider()
 
 # ---------------------------------------------------------
-# 4. PESTAÑAS DETALLADAS TIPO EXCEL & DESGLOSE DINÁMICO
+# 4. PESTAÑAS DETALLADAS TIPO EXCEL (2 PESTAÑAS PRINCIPALES)
 # ---------------------------------------------------------
-tab1, tab2, tab3 = st.tabs([
+tab1, tab2 = st.tabs([
     "📊 Balance Detallado Entrada/Salida por Celda", 
-    "📈 Parámetros de Concentración (RC, RE, RP)", 
-    "🔍 Comparativa Inter-Etapas"
+    "📈 Parámetros de Concentración (RC, RE, RP)"
 ])
 
 with tab1:
@@ -373,18 +370,6 @@ with tab2:
     st.caption("Resumen de las razones de concentración (RC), enriquecimiento (RE) y peso (RP %) por cada unidad de proceso:")
     df_kpis_etapas = pd.DataFrame(resumen_etapas_kpis)
     st.dataframe(df_kpis_etapas, use_container_width=True)
-
-with tab3:
-    st.subheader("🔍 Comparación de Rendimiento Entre Celdas")
-    df_entradas = df_detalle[df_detalle["Flujo"].str.contains("ENTRADA")]
-    fig = px.bar(
-        df_entradas, 
-        x="Unidad", 
-        y=["Masa Minerales (t/h)", "Ganga (t/h)"], 
-        title="Carga de Alimentación Efectiva por Celda (TMSPH)",
-        barmode="group"
-    )
-    st.plotly_chart(fig, use_container_width=True)
 
 # ---------------------------------------------------------
 # 5. EXPORTACIÓN DE DATOS PARA POWER BI
