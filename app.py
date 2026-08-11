@@ -14,27 +14,24 @@ st.set_page_config(
 )
 
 st.title("⚙️ Simulador Metalúrgico: Balance Multi-Mineralógico Celda por Celda")
-st.caption("Herramienta de Procesamiento de Minerales con Selección Flexible de Especies y Exportación a Power BI")
+st.caption("Herramienta de Procesamiento de Minerales de Sulfuros de Cobre con Selección Flexible de Especies y Exportación a Power BI")
 
-# Base de Datos de Especies Mineralógicas (% Cu teórico según composición estequiométrica)
+# Base de Datos de Especies Mineralógicas Sulfuradas (% Cu teórico según composición estequiométrica)
 ESPECIES_BASE = {
     "Calcopirita (CuFeS2)": 34.63,
     "Bornita (Cu5FeS4)": 63.31,
     "Calcosina (Cu2S)": 79.85,
-    "Covelina (CuS)": 66.47,
-    "Malaquita (Cu2CO3(OH)2)": 57.48,
-    "Azurita (Cu3(CO3)2(OH)2)": 55.31,
-    "Crisocola (CuSiO3·2H2O)": 36.16
+    "Covelina (CuS)": 66.47
 }
 
-# Base de Datos Extendida para la Enciclopedia Mineralógica
+# Base de Datos Extendida para la Enciclopedia de Sulfuros
 INFO_MINERALES = {
     "Calcopirita": {
         "formula": "CuFeS2",
         "ley_cu": 34.63,
         "tipo": "Sulfuro Primario",
         "imagen_nombres": ["Calcopirita.jpg", "calcopirita.jpg", "Calcopirita.png", "calcopirita.png"],
-        "desc": "El mineral de cobre más abundante. Presenta color amarillo latón y respuesta óptima a la flotación con xantatos."
+        "desc": "El sulfuro de cobre más abundante en yacimientos porfídicos. Presenta respuesta óptima a la flotación colectiva con xantatos."
     },
     "Bornita": {
         "formula": "Cu5FeS4",
@@ -55,28 +52,7 @@ INFO_MINERALES = {
         "ley_cu": 66.47,
         "tipo": "Sulfuro Secundario",
         "imagen_nombres": ["Covelina.jpg", "covelina.jpg", "Covelina.png", "covelina.png"],
-        "desc": "De color azul índigo característico. Flota con alta cinetica en circuitos de flotación selectiva."
-    },
-    "Malaquita": {
-        "formula": "Cu2CO3(OH)2",
-        "ley_cu": 57.48,
-        "tipo": "Óxido / Carbonato",
-        "imagen_nombres": ["Malaquita.jpg", "malaquita.jpg", "Malaquita.png", "malaquita.png"],
-        "desc": "Mineral oxidado de tono verde brillante. Requiere agentes sulfidizantes (Na2S/NaHS) para flotar."
-    },
-    "Azurita": {
-        "formula": "Cu3(CO3)2(OH)2",
-        "ley_cu": 55.31,
-        "tipo": "Óxido / Carbonato",
-        "imagen_nombres": ["Azurita.jpg", "azurita.jpg", "Azurita.png", "azurita.png"],
-        "desc": "Carbonato hidratado de intenso color azul intenso. Aparece comúnmente asociada a la malaquita."
-    },
-    "Crisocola": {
-        "formula": "CuSiO3·2H2O",
-        "ley_cu": 36.16,
-        "tipo": "Silicato de Cobre",
-        "imagen_nombres": ["Crisocola.jpg", "crisocola.jpg", "Crisocola.png", "crisocola.png"],
-        "desc": "Silicato hidratado de baja flotabilidad directa. Habitualmente recuperado mediante lixiviación."
+        "desc": "De color azul índigo característico. Flota con alta cinética en circuitos de flotación selectiva."
     }
 }
 
@@ -132,7 +108,7 @@ tonelaje_A = st.sidebar.number_input("Tonelaje Fresco Total A (TMSPH)", min_valu
 modo_entrada = st.sidebar.radio(
     "Modo de Ingreso de Datos de Cabeza:",
     ["Ley Elemental (%Cu Cabeza)", "Ley de Especie Mineral Directa (% Mineral)"],
-    help="Elige si deseas ingresar la ley de cobre total o los porcentajes reales de cada mineral en la roca."
+    help="Elige si deseas ingresar la ley de cobre total o los porcentajes reales de cada sulfuro en la roca."
 )
 
 especies_seleccionadas = []
@@ -145,10 +121,10 @@ if modo_entrada == "Ley Elemental (%Cu Cabeza)":
     ley_cu_A = st.sidebar.number_input("Ley de Cobre Cabeza (%Cu)", min_value=0.01, value=1.50, step=0.05, format="%.2f")
     masa_cu_A = tonelaje_A * (ley_cu_A / 100.0)
     
-    with st.sidebar.expander("➕ Configurar Especies Mineralógicas", expanded=True):
-        st.caption("Selecciona los minerales presentes en la alimentación:")
+    with st.sidebar.expander("➕ Configurar Sulfuros Presentes", expanded=True):
+        st.caption("Selecciona los sulfuros presentes en la alimentación:")
         especies_seleccionadas = st.multiselect(
-            "Minerales de Cobre Presentes:",
+            "Sulfuros de Cobre Presentes:",
             options=list(ESPECIES_BASE.keys()),
             default=["Calcopirita (CuFeS2)"]
         )
@@ -158,7 +134,7 @@ if modo_entrada == "Ley Elemental (%Cu Cabeza)":
             distribucion_minera[especies_seleccionadas[0]] = 100.0
             st.info(f"100% del Cobre asignado a {especies_seleccionadas[0]}")
         elif len(especies_seleccionadas) > 1:
-            st.caption("Distribución del Cobre entre minerales (% sobre Cobre total):")
+            st.caption("Distribución del Cobre entre sulfuros (% sobre Cobre total):")
             pct_acumulado = 0.0
             for idx, esp in enumerate(especies_seleccionadas):
                 val_def = round(100.0 / len(especies_seleccionadas), 1)
@@ -190,10 +166,10 @@ if modo_entrada == "Ley Elemental (%Cu Cabeza)":
         str_ensamble = "Cobre Elemental Pureza Metal"
 
 else:
-    with st.sidebar.expander("➕ Ingresar % de Minerales en la Roca", expanded=True):
-        st.caption("Ingresa el porcentaje en peso que representa cada mineral respecto al total de la alimentación:")
+    with st.sidebar.expander("➕ Ingresar % de Sulfuros en la Roca", expanded=True):
+        st.caption("Ingresa el porcentaje en peso que representa cada sulfuro respecto al total de la alimentación:")
         especies_seleccionadas = st.multiselect(
-            "Minerales Presentes en la Muestra:",
+            "Sulfuros Presentes en la Muestra:",
             options=list(ESPECIES_BASE.keys()),
             default=["Calcopirita (CuFeS2)"]
         )
@@ -389,7 +365,7 @@ st.divider()
 tab1, tab2, tab3 = st.tabs([
     "📊 Balance Detallado Entrada/Salida por Celda", 
     "📈 Parámetros de Concentración (RC, RE, RP)",
-    "💎 Enciclopedia de Especies Mineralógicas"
+    "💎 Enciclopedia de Sulfuros de Cobre"
 ])
 
 with tab1:
@@ -407,7 +383,7 @@ with tab1:
                 delta=f"{item['Cobre Fino (t/h)']} t/h Cu Fino"
             )
     else:
-        st.info("No hay especies mineralógicas seleccionadas.")
+        st.info("No hay sulfuros seleccionados.")
 
     st.divider()
     st.subheader("📋 Balance de Masa por Unidad Operacional (Vista Estilo Excel)")
@@ -424,8 +400,8 @@ with tab2:
     st.dataframe(df_kpis_etapas, use_container_width=True)
 
 with tab3:
-    st.subheader("📚 Base de Propiedades de Minerales de Cobre")
-    st.caption("Fichas técnicas, ley teórica estequiométrica y muestras minerales en alta definición.")
+    st.subheader("📚 Base de Propiedades de Sulfuros de Cobre")
+    st.caption("Fichas técnicas, ley teórica estequiométrica y muestras de sulfuros minerales en alta definición.")
     
     cols = st.columns(4)
     for idx, (nombre, datos) in enumerate(INFO_MINERALES.items()):
@@ -494,11 +470,11 @@ if "messages" not in st.session_state:
     st.session_state["messages"] = []
 
 contexto_tecnico = f"""
-Eres un Ingeniero Metalúrgico Senior experto en plantas concentradoras.
+Eres un Ingeniero Metalúrgico Senior experto en plantas concentradoras de sulfuros de cobre.
 Estás analizando el circuito actual configurado por el usuario:
 - Modo de Entrada: {modo_entrada}
 - Circuito: {circuito_seleccionado}
-- Ensamble Mineralógico: {str_ensamble}
+- Ensamble Mineralógico Sulfurado: {str_ensamble}
 - Alimentación Fresca (A): {tonelaje_A} TMSPH con ley de {ley_cu_A:.3f}% Cu.
 - Masa Mineral Pura Total: {masa_min_A_tot:.2f} t/h (Ganga: {masa_ganga_A:.2f} t/h)
 - Concentrado Final (CF): {masa_cf_tot:.2f} TMSPH con ley de {ley_cf:.2f}% Cu.
