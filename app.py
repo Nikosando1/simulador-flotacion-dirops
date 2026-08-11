@@ -2,7 +2,7 @@ import os
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from openai import OpenAI
+from google import genai
 
 # ---------------------------------------------------------
 # CONFIGURACIÓN DE LA PÁGINA WEB
@@ -331,7 +331,7 @@ with col_res:
 st.divider()
 
 # ---------------------------------------------------------
-# 4. PESTAÑAS DETALLADAS TIPO EXCEL (2 PESTAÑAS PRINCIPALES)
+# 4. PESTAÑAS DETALLADAS TIPO EXCEL
 # ---------------------------------------------------------
 tab1, tab2 = st.tabs([
     "📊 Balance Detallado Entrada/Salida por Celda", 
@@ -339,13 +339,11 @@ tab1, tab2 = st.tabs([
 ])
 
 with tab1:
-    # 📌 TABLA DINÁMICA DE APORTE POR ESPECIE MINERAL
     st.subheader("💎 Desglose de Aporte por Especie Mineralógica (Alimentación Fresca)")
     if desglose_especies_A:
         df_desglose = pd.DataFrame(desglose_especies_A)
         st.dataframe(df_desglose, use_container_width=True)
         
-        # Tarjetas dinámicas individuales
         cols_min = st.columns(min(len(desglose_especies_A), 4))
         for idx, item in enumerate(desglose_especies_A):
             col_target = cols_min[idx % len(cols_min)]
@@ -403,11 +401,11 @@ with col_exp2:
     st.info("💡 Tip: Guarda este CSV en una carpeta local fija. Si conectas Power BI a esa carpeta o archivo, el reporte se actualizará automáticamente cada vez que exportes nuevos escenarios.")
 
 # ---------------------------------------------------------
-# 6. CHATBOT ASISTENTE METALÚRGICO CON IA
+# 6. CHATBOT ASISTENTE METALÚRGICO CON GOOGLE GEMINI IA
 # ---------------------------------------------------------
 st.divider()
-st.subheader("💬 Asistente Virtual Metalúrgico (Chatbot IA)")
-st.caption("Pregúntale cualquier duda operacional sobre el balance o solicita recomendaciones técnicas en tiempo real.")
+st.subheader("💬 Asistente Virtual Metalúrgico (Google Gemini IA)")
+st.caption("Pregúntale cualquier duda operacional sobre el balance o solicita recomendaciones técnicas respaldadas con razonamiento avanzado.")
 
 if "messages" not in st.session_state:
     st.session_state["messages"] = []
@@ -437,10 +435,10 @@ for msg in st.session_state["messages"]:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-api_key = st.secrets.get("GROQ_API_KEY", os.environ.get("GROQ_API_KEY", ""))
+gemini_key = st.secrets.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY", ""))
 
-if not api_key:
-    st.info("💡 Para activar el Chatbot, guarda la clave `GROQ_API_KEY` en los Secrets de Streamlit Cloud.")
+if not gemini_key:
+    st.info("💡 Para activar el Chatbot, guarda la clave `GEMINI_API_KEY` en los Secrets de Streamlit Cloud.")
 else:
     if prompt_usuario := st.chat_input("Escribe tu consulta sobre este circuito de flotación..."):
         st.session_state["messages"].append({"role": "user", "content": prompt_usuario})
@@ -448,29 +446,25 @@ else:
             st.markdown(prompt_usuario)
 
         with st.chat_message("assistant"):
-            with st.spinner("Analizando balance metalúrgico..."):
+            with st.spinner("Analizando balance metalúrgico con Gemini..."):
                 try:
-                    client = OpenAI(
-                        base_url="https://api.groq.com/openai/v1",
-                        api_key=api_key
-                    )
+                    client = genai.Client(api_key=gemini_key)
                     
-                    mensajes_api = [{"role": "system", "content": contexto_tecnico}]
+                    historial_prompt = f"System Context:\n{contexto_tecnico}\n\nHistorial de Conversación:\n"
                     for m in st.session_state["messages"]:
-                        mensajes_api.append({"role": m["role"], "content": m["content"]})
+                        historial_prompt += f"{m['role'].capitalize()}: {m['content']}\n"
                     
-                    response = client.chat.completions.create(
-                        model="llama-3.1-8b-instant",
-                        messages=mensajes_api,
-                        temperature=0.3
+                    response = client.models.generate_content(
+                        model='gemini-2.5-flash',
+                        contents=historial_prompt
                     )
                     
-                    respuesta_ia = response.choices[0].message.content
+                    respuesta_ia = response.text
                     st.markdown(respuesta_ia)
                     st.session_state["messages"].append({"role": "assistant", "content": respuesta_ia})
                     
                 except Exception as e:
-                    st.error(f"Error al comunicar con la IA: {e}")
+                    st.error(f"Error al comunicar con la API de Gemini: {e}")
 
 # ---------------------------------------------------------
 # 7. PIE DE PÁGINA / CRÉDITOS
