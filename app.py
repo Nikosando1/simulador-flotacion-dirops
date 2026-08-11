@@ -27,6 +27,59 @@ ESPECIES_BASE = {
     "Crisocola (CuSiO3·2H2O)": 36.16
 }
 
+# Base de Datos Extendida para la Enciclopedia Mineralógica
+INFO_MINERALES = {
+    "Calcopirita": {
+        "formula": "CuFeS2",
+        "ley_cu": 34.63,
+        "tipo": "Sulfuro Primario",
+        "imagen_nombres": ["Calcopirita.jpg", "calcopirita.jpg", "Calcopirita.png", "calcopirita.png"],
+        "desc": "El mineral de cobre más abundante. Presenta color amarillo latón y respuesta óptima a la flotación con xantatos."
+    },
+    "Bornita": {
+        "formula": "Cu5FeS4",
+        "ley_cu": 63.31,
+        "tipo": "Sulfuro Secundario/Primario",
+        "imagen_nombres": ["Bornita.jpg", "bornita.jpg", "Bornita.png", "bornita.png"],
+        "desc": "Conocida como 'peacock ore' por sus pátinas iridiscentes. Posee un elevado contenido metálico de Cobre."
+    },
+    "Calcosina": {
+        "formula": "Cu2S",
+        "ley_cu": 79.85,
+        "tipo": "Sulfuro Secundario",
+        "imagen_nombres": ["Calcosina.jpg", "calcosina.jpg", "Calcosina.png", "calcosina.png"],
+        "desc": "Clave en zonas de enriquecimiento supergeno. Es el sulfuro con mayor porcentaje teórico de Cobre."
+    },
+    "Covelina": {
+        "formula": "CuS",
+        "ley_cu": 66.47,
+        "tipo": "Sulfuro Secundario",
+        "imagen_nombres": ["Covelina.jpg", "covelina.jpg", "Covelina.png", "covelina.png"],
+        "desc": "De color azul índigo característico. Flota con alta cinetica en circuitos de flotación selectiva."
+    },
+    "Malaquita": {
+        "formula": "Cu2CO3(OH)2",
+        "ley_cu": 57.48,
+        "tipo": "Óxido / Carbonato",
+        "imagen_nombres": ["Malaquita.jpg", "malaquita.jpg", "Malaquita.png", "malaquita.png"],
+        "desc": "Mineral oxidado de tono verde brillante. Requiere agentes sulfidizantes (Na2S/NaHS) para flotar."
+    },
+    "Azurita": {
+        "formula": "Cu3(CO3)2(OH)2",
+        "ley_cu": 55.31,
+        "tipo": "Óxido / Carbonato",
+        "imagen_nombres": ["Azurita.jpg", "azurita.jpg", "Azurita.png", "azurita.png"],
+        "desc": "Carbonato hidratado de intenso color azul intenso. Aparece comúnmente asociada a la malaquita."
+    },
+    "Crisocola": {
+        "formula": "CuSiO3·2H2O",
+        "ley_cu": 36.16,
+        "tipo": "Silicato de Cobre",
+        "imagen_nombres": ["Crisocola.jpg", "crisocola.jpg", "Crisocola.png", "crisocola.png"],
+        "desc": "Silicato hidratado de baja flotabilidad directa. Habitualmente recuperado mediante lixiviación."
+    }
+}
+
 # ---------------------------------------------------------
 # 1. SELECCIÓN DE ARQUITECTURA DE CIRCUITO
 # ---------------------------------------------------------
@@ -331,11 +384,12 @@ with col_res:
 st.divider()
 
 # ---------------------------------------------------------
-# 4. PESTAÑAS DETALLADAS TIPO EXCEL
+# 4. PESTAÑAS DETALLADAS TIPO EXCEL Y ENCICLOPEDIA
 # ---------------------------------------------------------
-tab1, tab2 = st.tabs([
+tab1, tab2, tab3 = st.tabs([
     "📊 Balance Detallado Entrada/Salida por Celda", 
-    "📈 Parámetros de Concentración (RC, RE, RP)"
+    "📈 Parámetros de Concentración (RC, RE, RP)",
+    "💎 Enciclopedia de Especies Mineralógicas"
 ])
 
 with tab1:
@@ -368,6 +422,35 @@ with tab2:
     st.caption("Resumen de las razones de concentración (RC), enriquecimiento (RE) y peso (RP %) por cada unidad de proceso:")
     df_kpis_etapas = pd.DataFrame(resumen_etapas_kpis)
     st.dataframe(df_kpis_etapas, use_container_width=True)
+
+with tab3:
+    st.subheader("📚 Base de Propiedades de Minerales de Cobre")
+    st.caption("Fichas técnicas, ley teórica estequiométrica y muestras minerales en alta definición.")
+    
+    cols = st.columns(4)
+    for idx, (nombre, datos) in enumerate(INFO_MINERALES.items()):
+        col_target = cols[idx % 4]
+        
+        # Buscar la foto existente en la carpeta Assets/Minerales/
+        path_imagen_encontrada = None
+        for pos_nombre in datos["imagen_nombres"]:
+            pos_path = os.path.join("Assets", "Minerales", pos_nombre)
+            if os.path.exists(pos_path):
+                path_imagen_encontrada = pos_path
+                break
+                
+        with col_target:
+            with st.container(border=True):
+                if path_imagen_encontrada:
+                    st.image(path_imagen_encontrada, use_container_width=True)
+                else:
+                    st.markdown("🖼️ *(Foto no encontrada en Assets/Minerales/)*")
+                    
+                st.markdown(f"### {nombre}")
+                st.caption(f"**Fórmula:** `{datos['formula']}`")
+                st.markdown(f"**Tipo:** {datos['tipo']}")
+                st.metric("Ley Cu Teórica", f"{datos['ley_cu']}%")
+                st.caption(datos["desc"])
 
 # ---------------------------------------------------------
 # 5. EXPORTACIÓN DE DATOS PARA POWER BI
@@ -454,20 +537,17 @@ else:
                     for m in st.session_state["messages"]:
                         historial_prompt += f"{m['role'].capitalize()}: {m['content']}\n"
                     
-                    # Detección dinámica de modelo activo ignorando versiones descontinuadas
                     modelo_target = None
                     try:
                         for m in genai.list_models():
                             if 'generateContent' in m.supported_generation_methods and 'gemini' in m.name:
                                 nombre_limpio = m.name.replace('models/', '')
-                                # Omitir el modelo deprecado 2.5
                                 if '2.5' not in nombre_limpio:
                                     modelo_target = nombre_limpio
                                     break
                     except Exception:
                         pass
 
-                    # Fallback por defecto si la lista de modelos no responde
                     if not modelo_target:
                         modelo_target = "gemini-1.5-flash"
 
@@ -480,6 +560,7 @@ else:
                     
                 except Exception as e:
                     st.error(f"Error al comunicar con la API de Gemini: {e}")
+
 # ---------------------------------------------------------
 # 7. PIE DE PÁGINA / CRÉDITOS
 # ---------------------------------------------------------
