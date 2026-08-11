@@ -1,4 +1,4 @@
 streamlit
 pandas
 plotly
-openai
+google-genai
