@@ -27,7 +27,6 @@ def cargar_imagen_base64(ruta_imagen):
 path_hero_bg = os.path.join("Assets", "hero_background.jpg")
 hero_bg_b64 = cargar_imagen_base64(path_hero_bg)
 
-# CSS DINÁMICO
 if hero_bg_b64:
     css_hero_bg = f"background: linear-gradient(180deg, rgba(20,20,20,0.5) 0%, rgba(15,15,15,0.95) 100%), url('{hero_bg_b64}');"
 else:
@@ -75,16 +74,27 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# INICIALIZACIÓN DE ESTADOS (SESSION STATE)
+# INICIALIZACIÓN DE ESTADOS (SESSION STATE COMPLETO)
 # ---------------------------------------------------------
 if "seccion_activa" not in st.session_state:
     st.session_state["seccion_activa"] = "Inicio"
 
 if "datos_simulacion" not in st.session_state:
     st.session_state["datos_simulacion"] = {
+        "circuito": "1. Rougher – Scavenger (Con Recirculación a Cabeza)",
         "tonelaje_A": 1000.0,
+        "modo_entrada": "Ley Elemental (%Cu Cabeza)",
         "ley_cu_A": 1.50,
-        "circuito": "1. Rougher – Scavenger (Con Recirculación a Cabeza)"
+        "especies_seleccionadas": ["Calcopirita (CuFeS2)"],
+        "distribucion_minera": {"Calcopirita (CuFeS2)": 100.0},
+        "pct_roca_minera": {"Calcopirita (CuFeS2)": 4.0},
+        "recup_etapas": {
+            "rec_R_min": 85.0, "rec_R_ganga": 3.0,
+            "rec_Cl_min": 80.0, "rec_Cl_ganga": 1.0,
+            "rec_Cl1_min": 80.0, "rec_Cl1_ganga": 1.5,
+            "rec_Cl2_min": 85.0, "rec_Cl2_ganga": 0.5,
+            "rec_Sc_min": 70.0, "rec_Sc_ganga": 2.0
+        }
     }
 
 # BASES DE DATOS DE SULFUROS DE COBRE
@@ -193,7 +203,7 @@ elif st.session_state["seccion_activa"] == "Simuladores":
             st.rerun()
 
 # ---------------------------------------------------------
-# VISTA 4: SIMULADOR DE FLOTACIÓN (MOTOR COMPLETO)
+# VISTA 4: SIMULADOR DE FLOTACIÓN (MOTOR COMPLETO RESTAURABLE)
 # ---------------------------------------------------------
 elif st.session_state["seccion_activa"] == "Flotacion":
     st.title("⚙️ Simulador Metalúrgico: Flotación Celda por Celda")
@@ -205,41 +215,52 @@ elif st.session_state["seccion_activa"] == "Flotacion":
 
     st.sidebar.divider()
 
-    circuito_seleccionado = st.sidebar.selectbox("Diagrama de Flujo:", list(OPCIONES_CIRCUITO.keys()))
+    # RESTAURACIÓN DE VALORES DESDE ESTADO CARGADO
+    ds = st.session_state["datos_simulacion"]
+    
+    circuito_def = ds.get("circuito", list(OPCIONES_CIRCUITO.keys())[0])
+    idx_circuito = list(OPCIONES_CIRCUITO.keys()).index(circuito_def) if circuito_def in OPCIONES_CIRCUITO else 0
+    
+    circuito_seleccionado = st.sidebar.selectbox("Diagrama de Flujo:", list(OPCIONES_CIRCUITO.keys()), index=idx_circuito)
     info_circuito = OPCIONES_CIRCUITO[circuito_seleccionado]
     
-    tonelaje_A = st.sidebar.number_input("Tonelaje Fresco Total A (TMSPH)", min_value=1.0, value=float(st.session_state["datos_simulacion"].get("tonelaje_A", 1000.0)), step=10.0, format="%.2f")
+    tonelaje_A = st.sidebar.number_input("Tonelaje Fresco Total A (TMSPH)", min_value=1.0, value=float(ds.get("tonelaje_A", 1000.0)), step=10.0, format="%.2f")
 
-    modo_entrada = st.sidebar.radio(
-        "Modo de Ingreso de Datos de Cabeza:",
-        ["Ley Elemental (%Cu Cabeza)", "Ley de Especie Mineral Directa (% Mineral)"]
-    )
+    modo_entrada_def = ds.get("modo_entrada", "Ley Elemental (%Cu Cabeza)")
+    idx_modo = 0 if modo_entrada_def == "Ley Elemental (%Cu Cabeza)" else 1
+    modo_entrada = st.sidebar.radio("Modo de Ingreso de Datos de Cabeza:", ["Ley Elemental (%Cu Cabeza)", "Ley de Especie Mineral Directa (% Mineral)"], index=idx_modo)
 
     especies_seleccionadas = []
     desglose_especies_A = []
     ley_cu_A = 0.0
     masa_cu_A = 0.0
     masa_min_A_tot = 0.0
+    distribucion_minera = {}
+    pct_roca_minera = {}
+
+    especies_def = ds.get("especies_seleccionadas", ["Calcopirita (CuFeS2)"])
+    # Filtrar solo las especies que existan en la base
+    especies_def_validas = [e for e in especies_def if e in ESPECIES_BASE]
 
     if modo_entrada == "Ley Elemental (%Cu Cabeza)":
-        ley_cu_A = st.sidebar.number_input("Ley de Cobre Cabeza (%Cu)", min_value=0.01, value=float(st.session_state["datos_simulacion"].get("ley_cu_A", 1.50)), step=0.05, format="%.2f")
+        ley_cu_A = st.sidebar.number_input("Ley de Cobre Cabeza (%Cu)", min_value=0.01, value=float(ds.get("ley_cu_A", 1.50)), step=0.05, format="%.2f")
         masa_cu_A = tonelaje_A * (ley_cu_A / 100.0)
         
         with st.sidebar.expander("➕ Configurar Sulfuros Presentes", expanded=True):
             especies_seleccionadas = st.multiselect(
                 "Sulfuros de Cobre Presentes:",
                 options=list(ESPECIES_BASE.keys()),
-                default=["Calcopirita (CuFeS2)"]
+                default=especies_def_validas if especies_def_validas else ["Calcopirita (CuFeS2)"]
             )
             
-            distribucion_minera = {}
+            dist_cargada = ds.get("distribucion_minera", {})
             if len(especies_seleccionadas) == 1:
                 distribucion_minera[especies_seleccionadas[0]] = 100.0
             elif len(especies_seleccionadas) > 1:
                 pct_acumulado = 0.0
                 for idx, esp in enumerate(especies_seleccionadas):
-                    val_def = round(100.0 / len(especies_seleccionadas), 1)
-                    p = st.number_input(f"% Cu de {esp}:", min_value=0.0, max_value=100.0, value=val_def, step=1.0, key=f"dist_{idx}")
+                    val_def_m = float(dist_cargada.get(esp, round(100.0 / len(especies_seleccionadas), 1)))
+                    p = st.number_input(f"% Cu de {esp}:", min_value=0.0, max_value=100.0, value=val_def_m, step=1.0, key=f"dist_{idx}")
                     distribucion_minera[esp] = p
                     pct_acumulado += p
         
@@ -268,19 +289,22 @@ elif st.session_state["seccion_activa"] == "Flotacion":
             especies_seleccionadas = st.multiselect(
                 "Sulfuros Presentes en la Muestra:",
                 options=list(ESPECIES_BASE.keys()),
-                default=["Calcopirita (CuFeS2)"]
+                default=especies_def_validas if especies_def_validas else ["Calcopirita (CuFeS2)"]
             )
             
+            pct_cargado = ds.get("pct_roca_minera", {})
             for idx, esp in enumerate(especies_seleccionadas):
+                val_def_r = float(pct_cargado.get(esp, 4.0 if "Calcopirita" in esp else 1.0))
                 val_pct_roca = st.number_input(
                     f"% en Roca de {esp}:", 
                     min_value=0.00, 
                     max_value=100.00, 
-                    value=4.00 if "Calcopirita" in esp else 1.00, 
+                    value=val_def_r, 
                     step=0.10, 
                     format="%.2f",
                     key=f"direct_{idx}"
                 )
+                pct_roca_minera[esp] = val_pct_roca
                 pct_cu_teorico = ESPECIES_BASE[esp]
                 masa_mineral_esp = tonelaje_A * (val_pct_roca / 100.0)
                 cu_fino_esp = masa_mineral_esp * (pct_cu_teorico / 100.0)
@@ -300,11 +324,45 @@ elif st.session_state["seccion_activa"] == "Flotacion":
             str_ensamble = ", ".join([f"{e['Especie Mineral']} ({e['% en Roca Total']}% roca)" for e in desglose_especies_A])
             st.metric("Ley de Cobre Calculada Equiv.", f"{ley_cu_A:.3f} %Cu")
 
+    masa_ganga_A = max(0.0, tonelaje_A - masa_min_A_tot)
+    pct_cu_promedio = (masa_cu_A / masa_min_A_tot * 100.0) if masa_min_A_tot > 0 else 100.0
+
+    # RECUPERACIONES
+    rec_cargadas = ds.get("recup_etapas", {})
+    st.sidebar.header("🔄 Recuperaciones por Etapa (%)")
+    etapas_activas = info_circuito["etapas"]
+
+    rec_R_min = st.sidebar.number_input("Recup. Mineral Rougher (%)", min_value=0.0, max_value=100.0, value=float(rec_cargadas.get("rec_R_min", 85.0)), step=0.1) if "Rougher" in etapas_activas else 0.0
+    rec_R_ganga = st.sidebar.number_input("Recup. Ganga Rougher (%)", min_value=0.0, max_value=100.0, value=float(rec_cargadas.get("rec_R_ganga", 3.0)), step=0.1) if "Rougher" in etapas_activas else 0.0
+
+    rec_Cl_min = st.sidebar.number_input("Recup. Mineral Cleaner (%)", min_value=0.0, max_value=100.0, value=float(rec_cargadas.get("rec_Cl_min", 80.0)), step=0.1) if "Cleaner" in etapas_activas else 0.0
+    rec_Cl_ganga = st.sidebar.number_input("Recup. Ganga Cleaner (%)", min_value=0.0, max_value=100.0, value=float(rec_cargadas.get("rec_Cl_ganga", 1.0)), step=0.1) if "Cleaner" in etapas_activas else 0.0
+
+    rec_Cl1_min = st.sidebar.number_input("Recup. Mineral Cleaner 1 (%)", min_value=0.0, max_value=100.0, value=float(rec_cargadas.get("rec_Cl1_min", 80.0)), step=0.1) if "Cleaner1" in etapas_activas else 0.0
+    rec_Cl1_ganga = st.sidebar.number_input("Recup. Ganga Cleaner 1 (%)", min_value=0.0, max_value=100.0, value=float(rec_cargadas.get("rec_Cl1_ganga", 1.5)), step=0.1) if "Cleaner1" in etapas_activas else 0.0
+
+    rec_Cl2_min = st.sidebar.number_input("Recup. Mineral Cleaner 2 (%)", min_value=0.0, max_value=100.0, value=float(rec_cargadas.get("rec_Cl2_min", 85.0)), step=0.1) if "Cleaner2" in etapas_activas else 0.0
+    rec_Cl2_ganga = st.sidebar.number_input("Recup. Ganga Cleaner 2 (%)", min_value=0.0, max_value=100.0, value=float(rec_cargadas.get("rec_Cl2_ganga", 0.5)), step=0.1) if "Cleaner2" in etapas_activas else 0.0
+
+    rec_Sc_min = st.sidebar.number_input("Recup. Mineral Scavenger (%)", min_value=0.0, max_value=100.0, value=float(rec_cargadas.get("rec_Sc_min", 70.0)), step=0.1) if "Scavenger" in etapas_activas else 0.0
+    rec_Sc_ganga = st.sidebar.number_input("Recup. Ganga Scavenger (%)", min_value=0.0, max_value=100.0, value=float(rec_cargadas.get("rec_Sc_ganga", 2.0)), step=0.1) if "Scavenger" in etapas_activas else 0.0
+
+    # EMPAQUETADO COMPLETO DEL ESTADO PARA GUARDAR
     st.session_state["datos_simulacion"] = {
-        "tonelaje_A": tonelaje_A,
-        "ley_cu_A": ley_cu_A,
         "circuito": circuito_seleccionado,
-        "modo_entrada": modo_entrada
+        "tonelaje_A": tonelaje_A,
+        "modo_entrada": modo_entrada,
+        "ley_cu_A": ley_cu_A,
+        "especies_seleccionadas": especies_seleccionadas,
+        "distribucion_minera": distribucion_minera,
+        "pct_roca_minera": pct_roca_minera,
+        "recup_etapas": {
+            "rec_R_min": rec_R_min, "rec_R_ganga": rec_R_ganga,
+            "rec_Cl_min": rec_Cl_min, "rec_Cl_ganga": rec_Cl_ganga,
+            "rec_Cl1_min": rec_Cl1_min, "rec_Cl1_ganga": rec_Cl1_ganga,
+            "rec_Cl2_min": rec_Cl2_min, "rec_Cl2_ganga": rec_Cl2_ganga,
+            "rec_Sc_min": rec_Sc_min, "rec_Sc_ganga": rec_Sc_ganga
+        }
     }
 
     st.sidebar.divider()
@@ -317,27 +375,7 @@ elif st.session_state["seccion_activa"] == "Flotacion":
         use_container_width=True
     )
 
-    masa_ganga_A = max(0.0, tonelaje_A - masa_min_A_tot)
-    pct_cu_promedio = (masa_cu_A / masa_min_A_tot * 100.0) if masa_min_A_tot > 0 else 100.0
-
-    st.sidebar.header("🔄 Recuperaciones por Etapa (%)")
-    etapas_activas = info_circuito["etapas"]
-
-    rec_R_min = st.sidebar.number_input("Recup. Mineral Rougher (%)", min_value=0.0, max_value=100.0, value=85.0, step=0.1) if "Rougher" in etapas_activas else 0.0
-    rec_R_ganga = st.sidebar.number_input("Recup. Ganga Rougher (%)", min_value=0.0, max_value=100.0, value=3.0, step=0.1) if "Rougher" in etapas_activas else 0.0
-
-    rec_Cl_min = st.sidebar.number_input("Recup. Mineral Cleaner (%)", min_value=0.0, max_value=100.0, value=80.0, step=0.1) if "Cleaner" in etapas_activas else 0.0
-    rec_Cl_ganga = st.sidebar.number_input("Recup. Ganga Cleaner (%)", min_value=0.0, max_value=100.0, value=1.0, step=0.1) if "Cleaner" in etapas_activas else 0.0
-
-    rec_Cl1_min = st.sidebar.number_input("Recup. Mineral Cleaner 1 (%)", min_value=0.0, max_value=100.0, value=80.0, step=0.1) if "Cleaner1" in etapas_activas else 0.0
-    rec_Cl1_ganga = st.sidebar.number_input("Recup. Ganga Cleaner 1 (%)", min_value=0.0, max_value=100.0, value=1.5, step=0.1) if "Cleaner1" in etapas_activas else 0.0
-
-    rec_Cl2_min = st.sidebar.number_input("Recup. Mineral Cleaner 2 (%)", min_value=0.0, max_value=100.0, value=85.0, step=0.1) if "Cleaner2" in etapas_activas else 0.0
-    rec_Cl2_ganga = st.sidebar.number_input("Recup. Ganga Cleaner 2 (%)", min_value=0.0, max_value=100.0, value=0.5, step=0.1) if "Cleaner2" in etapas_activas else 0.0
-
-    rec_Sc_min = st.sidebar.number_input("Recup. Mineral Scavenger (%)", min_value=0.0, max_value=100.0, value=70.0, step=0.1) if "Scavenger" in etapas_activas else 0.0
-    rec_Sc_ganga = st.sidebar.number_input("Recup. Ganga Scavenger (%)", min_value=0.0, max_value=100.0, value=2.0, step=0.1) if "Scavenger" in etapas_activas else 0.0
-
+    # DIAGRAMA Y MOTOR DE CÁLCULO
     col_diag, col_res = st.columns([1, 1])
 
     with col_diag:
