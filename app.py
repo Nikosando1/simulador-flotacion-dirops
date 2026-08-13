@@ -1,5 +1,6 @@
 import os
 import json
+import base64
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -15,15 +16,30 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Estilos CSS avanzados para replicar la maqueta
-st.markdown("""
+# FUNCIÓN PARA CONVERTIR IMAGEN LOCAL A BASE64 PARA CSS
+def cargar_imagen_base64(ruta_imagen):
+    if os.path.exists(ruta_imagen):
+        with open(ruta_imagen, "rb") as image_file:
+            encoded_string = base64.b64encode(image_file.read()).decode()
+        return f"data:image/jpeg;base64,{encoded_string}"
+    return ""
+
+path_hero_bg = os.path.join("Assets", "hero_background.jpg")
+hero_bg_b64 = cargar_imagen_base64(path_hero_bg)
+
+# CSS DINÁMICO
+if hero_bg_b64:
+    css_hero_bg = f"background: linear-gradient(180deg, rgba(20,20,20,0.5) 0%, rgba(15,15,15,0.95) 100%), url('{hero_bg_b64}');"
+else:
+    css_hero_bg = "background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);"
+
+st.markdown(f"""
     <style>
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
+    #MainMenu {{visibility: hidden;}}
+    footer {{visibility: hidden;}}
     
-    .hero-container {
-        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%), 
-                    url('Assets/hero_background.jpg');
+    .hero-container {{
+        {css_hero_bg}
         background-size: cover;
         background-position: center;
         border-radius: 16px;
@@ -33,9 +49,9 @@ st.markdown("""
         margin-bottom: 25px;
         border: 1px solid rgba(255, 255, 255, 0.1);
         box-shadow: 0px 10px 30px rgba(0,0,0,0.6);
-    }
+    }}
     
-    .hero-title-ref {
+    .hero-title-ref {{
         font-family: 'Helvetica Neue', sans-serif;
         font-size: 3.5rem;
         font-weight: 700;
@@ -43,9 +59,9 @@ st.markdown("""
         margin-bottom: 35px;
         color: #ffffff;
         max-width: 650px;
-    }
+    }}
     
-    div.stButton > button[key="btn_crear"] {
+    div.stButton > button[key="btn_crear"] {{
         background-color: #4D5BF7 !important;
         color: white !important;
         border-radius: 30px !important;
@@ -54,7 +70,7 @@ st.markdown("""
         font-weight: 600 !important;
         border: none !important;
         box-shadow: 0px 4px 15px rgba(77, 91, 247, 0.4) !important;
-    }
+    }}
     </style>
 """, unsafe_allow_html=True)
 
@@ -284,6 +300,23 @@ elif st.session_state["seccion_activa"] == "Flotacion":
             str_ensamble = ", ".join([f"{e['Especie Mineral']} ({e['% en Roca Total']}% roca)" for e in desglose_especies_A])
             st.metric("Ley de Cobre Calculada Equiv.", f"{ley_cu_A:.3f} %Cu")
 
+    st.session_state["datos_simulacion"] = {
+        "tonelaje_A": tonelaje_A,
+        "ley_cu_A": ley_cu_A,
+        "circuito": circuito_seleccionado,
+        "modo_entrada": modo_entrada
+    }
+
+    st.sidebar.divider()
+    json_str_side = json.dumps(st.session_state["datos_simulacion"], indent=4)
+    st.sidebar.download_button(
+        label="💾 Guardar Avance (.json)",
+        data=json_str_side,
+        file_name="simulacion_flotacion.json",
+        mime="application/json",
+        use_container_width=True
+    )
+
     masa_ganga_A = max(0.0, tonelaje_A - masa_min_A_tot)
     pct_cu_promedio = (masa_cu_A / masa_min_A_tot * 100.0) if masa_min_A_tot > 0 else 100.0
 
@@ -305,7 +338,6 @@ elif st.session_state["seccion_activa"] == "Flotacion":
     rec_Sc_min = st.sidebar.number_input("Recup. Mineral Scavenger (%)", min_value=0.0, max_value=100.0, value=70.0, step=0.1) if "Scavenger" in etapas_activas else 0.0
     rec_Sc_ganga = st.sidebar.number_input("Recup. Ganga Scavenger (%)", min_value=0.0, max_value=100.0, value=2.0, step=0.1) if "Scavenger" in etapas_activas else 0.0
 
-    # DIAGRAMA Y MOTOR DE CÁLCULO
     col_diag, col_res = st.columns([1, 1])
 
     with col_diag:
@@ -361,7 +393,6 @@ elif st.session_state["seccion_activa"] == "Flotacion":
         
         return (m_min_s1, m_g_s1), (m_min_s2, m_g_s2)
 
-    # CÁLCULOS SEGÚN CIRCUITO
     if "1. Rougher – Scavenger (Con Recirculación" in circuito_seleccionado:
         m_min_ER = masa_min_A_tot / (1.0 - (1.0 - r_R_m) * r_Sc_m)
         m_g_ER = masa_ganga_A / (1.0 - (1.0 - r_R_g) * r_Sc_g)
@@ -473,9 +504,9 @@ elif st.session_state["seccion_activa"] == "Flotacion":
         df_kpis_etapas = pd.DataFrame(resumen_etapas_kpis)
         st.dataframe(df_kpis_etapas, use_container_width=True)
 
-    # EXPORTACIÓN POWER BI
+    # EXPORTACIÓN Y GUARDADO DE ARCHIVOS
     st.divider()
-    st.subheader("📥 Exportar Datos para Power BI")
+    st.subheader("📥 Exportar Datos y Guardar Proyecto")
 
     col_exp1, col_exp2 = st.columns(2)
 
@@ -489,17 +520,25 @@ elif st.session_state["seccion_activa"] == "Flotacion":
     df_powerbi["RP Global (%)"] = rp_global
 
     csv_data = df_powerbi.to_csv(index=False).encode('utf-8')
+    json_str = json.dumps(st.session_state["datos_simulacion"], indent=4)
 
     with col_exp1:
+        st.download_button(
+            label="💾 Guardar Avance del Proyecto (.json)",
+            data=json_str,
+            file_name="simulacion_flotacion.json",
+            mime="application/json",
+            help="Descarga un archivo con toda la configuración actual para volver a cargarlo en el inicio."
+        )
+
+    with col_exp2:
         st.download_button(
             label="📄 Descargar Datos en CSV para Power BI",
             data=csv_data,
             file_name="balance_metalurgico_powerbi.csv",
-            mime="text/csv"
+            mime="text/csv",
+            help="Descarga el archivo CSV estructurado listo para importar en Power BI."
         )
-
-    with col_exp2:
-        st.info("💡 Tip: Guarda este CSV en una carpeta local fija para conectar Power BI.")
 
     # CHATBOT GEMINI IA
     st.divider()
