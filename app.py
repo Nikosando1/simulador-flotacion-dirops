@@ -239,7 +239,6 @@ elif st.session_state["seccion_activa"] == "Flotacion":
     pct_roca_minera = {}
 
     especies_def = ds.get("especies_seleccionadas", ["Calcopirita (CuFeS2)"])
-    # Filtrar solo las especies que existan en la base
     especies_def_validas = [e for e in especies_def if e in ESPECIES_BASE]
 
     if modo_entrada == "Ley Elemental (%Cu Cabeza)":
@@ -347,7 +346,6 @@ elif st.session_state["seccion_activa"] == "Flotacion":
     rec_Sc_min = st.sidebar.number_input("Recup. Mineral Scavenger (%)", min_value=0.0, max_value=100.0, value=float(rec_cargadas.get("rec_Sc_min", 70.0)), step=0.1) if "Scavenger" in etapas_activas else 0.0
     rec_Sc_ganga = st.sidebar.number_input("Recup. Ganga Scavenger (%)", min_value=0.0, max_value=100.0, value=float(rec_cargadas.get("rec_Sc_ganga", 2.0)), step=0.1) if "Scavenger" in etapas_activas else 0.0
 
-    # EMPAQUETADO COMPLETO DEL ESTADO PARA GUARDAR
     st.session_state["datos_simulacion"] = {
         "circuito": circuito_seleccionado,
         "tonelaje_A": tonelaje_A,
@@ -578,7 +576,7 @@ elif st.session_state["seccion_activa"] == "Flotacion":
             help="Descarga el archivo CSV estructurado listo para importar en Power BI."
         )
 
-    # CHATBOT GEMINI IA
+    # CHATBOT GEMINI IA (CON BÚSQUEDA DINÁMICA DE MODELOS ACTIVOS)
     st.divider()
     st.subheader("💬 Asistente Virtual Metalúrgico (Google Gemini IA)")
 
@@ -614,9 +612,25 @@ elif st.session_state["seccion_activa"] == "Flotacion":
                 with st.spinner("Analizando balance metalúrgico con Gemini..."):
                     try:
                         genai.configure(api_key=gemini_key)
-                        model = genai.GenerativeModel("gemini-1.5-flash")
                         
                         historial_prompt = f"Contexto:\n{contexto_tecnico}\n\nPregunta: {prompt_usuario}"
+                        
+                        # Búsqueda dinámica del modelo disponible
+                        modelo_activo = None
+                        try:
+                            for m in genai.list_models():
+                                if 'generateContent' in m.supported_generation_methods and 'gemini' in m.name:
+                                    nombre_l = m.name.replace('models/', '')
+                                    if '2.5' not in nombre_l:
+                                        modelo_activo = nombre_l
+                                        break
+                        except Exception:
+                            pass
+                        
+                        if not modelo_activo:
+                            modelo_activo = "gemini-1.5-flash-latest"
+
+                        model = genai.GenerativeModel(modelo_activo)
                         response = model.generate_content(historial_prompt)
                         
                         st.markdown(response.text)
